@@ -24,6 +24,15 @@ class DeepSpeedAgentMultiClsOnly:
             raise RuntimeError("No trainable parameters configured for multiclass-only training.")
 
         ds_params = json.load(open(self.args["ds_config_path"]))
+        # Compatibility shim for newer deepspeed+pydantic validation:
+        # - fp16.opt_level is no longer accepted
+        # - bf16 may require `enabled` instead of legacy `enable`
+        fp16_cfg = ds_params.get("fp16", {})
+        if isinstance(fp16_cfg, dict):
+            fp16_cfg.pop("opt_level", None)
+        bf16_cfg = ds_params.get("bf16", {})
+        if isinstance(bf16_cfg, dict) and "enable" in bf16_cfg and "enabled" not in bf16_cfg:
+            bf16_cfg["enabled"] = bf16_cfg.pop("enable")
         ds_params["scheduler"]["params"]["total_num_steps"] = self.args["total_steps"]
         ds_params["scheduler"]["params"]["warmup_num_steps"] = max(
             10, int(self.args["total_steps"] * self.args["warmup_rate"])
