@@ -20,20 +20,37 @@ import random
 from random import random as rand
 import numpy as np
 
-describles_answ = {}
+MULTICLASS_LABELS = [
+    "orig",
+    "face_swap",
+    "face_attribute",
+    "text_swap",
+    "text_attribute",
+    "face_swap&text_swap",
+    "face_swap&text_attribute",
+    "face_attribute&text_swap",
+    "face_attribute&text_attribute",
+]
+MULTICLASS_CHOICES = list("ABCDEFGHI")
+LABEL_TO_INDEX = {label: idx for idx, label in enumerate(MULTICLASS_LABELS)}
+LABEL_TO_CHOICE = {label: MULTICLASS_CHOICES[idx] for idx, label in enumerate(MULTICLASS_LABELS)}
+
+describles_answ = {label: f"{LABEL_TO_CHOICE[label]}. {label}." for label in MULTICLASS_LABELS}
 
 describe_temple = "The following are multiple choice questions about fake news detection. \n\nThe caption of news is: "
-describe_ques_latter = ". The identity and emotion of the face, and the semantic and sentiment of the text should not be manipulated. Question: Is there any fake face or fake words in the news?\nA. Yes\nB. No\nThe answer is:"
-
-describles_answ['orig'] = "B. No."
-describles_answ['face_swap'] = "A. Yes."
-describles_answ['face_attribute'] = "A. Yes."
-describles_answ['text_swap'] = "A. Yes."
-describles_answ['text_attribute'] = "A. Yes."
-describles_answ['face_swap&text_swap'] = "A. Yes."
-describles_answ['face_swap&text_attribute'] = "A. Yes."
-describles_answ['face_attribute&text_swap'] = "A. Yes."
-describles_answ['face_attribute&text_attribute'] = "A. Yes."
+describe_ques_latter = (
+    ". Classify the manipulation type of this news into exactly one category.\n"
+    "A. orig\n"
+    "B. face_swap\n"
+    "C. face_attribute\n"
+    "D. text_swap\n"
+    "E. text_attribute\n"
+    "F. face_swap&text_swap\n"
+    "G. face_swap&text_attribute\n"
+    "H. face_attribute&text_swap\n"
+    "I. face_attribute&text_attribute\n"
+    "The answer is:"
+)
 
 class DGM4_Dataset(Dataset):
     def __init__(self, config, ann_file, transform, max_words=30, is_train=True):
