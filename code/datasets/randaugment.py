@@ -13,6 +13,12 @@ def autocontrast_func(img, cutoff=0):
     '''
     n_bins = 256
 
+    def _to_int_scalar(v):
+        # cv2 / numpy may return uint8 or 1-element arrays; normalize to Python int.
+        if isinstance(v, np.ndarray):
+            return int(v.reshape(-1)[0])
+        return int(v)
+
     def tune_channel(ch):
         n = ch.size
         cut = cutoff * n // 100
@@ -24,6 +30,8 @@ def autocontrast_func(img, cutoff=0):
             low = 0 if low.shape[0] == 0 else low[0]
             high = np.argwhere(np.cumsum(hist[::-1]) > cut)
             high = n_bins - 1 if high.shape[0] == 0 else n_bins - 1 - high[0]
+        low = _to_int_scalar(low)
+        high = _to_int_scalar(high)
         if high <= low:
             table = np.arange(n_bins)
         else:
