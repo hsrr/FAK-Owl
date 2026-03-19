@@ -56,7 +56,7 @@ describe_ques_latter = (
 class DGM4_DatasetMultiCls(Dataset):
     def __init__(self, config, ann_file, transform, max_words=30, is_train=True):
 
-        self.root_dir = "../data"
+        self.root_dir = config.get("data_root", "../data")
         self.ann = []
 
         for f in ann_file:
@@ -87,7 +87,7 @@ class DGM4_DatasetMultiCls(Dataset):
 
         ann = self.ann[index]
         img_dir = ann["image"]
-        image_dir_all = f"{self.root_dir}/{img_dir}"
+        image_dir_all = img_dir if os.path.isabs(img_dir) else os.path.join(self.root_dir, img_dir)
 
         try:
             image = Image.open(image_dir_all).convert("RGB")
