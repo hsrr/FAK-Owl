@@ -14,15 +14,18 @@ from model.openllama_multicls_aux_nogt import OpenLLAMAPEFTModelMultiClsAuxNoGT
 parser = argparse.ArgumentParser("FKA_Owl_MultiCls_Aux", add_help=True)
 parser.add_argument("--FKA_Owl_ckpt_path", default="./ckpt/train_DGM4_multicls_aux/pytorch_model.pt")
 parser.add_argument("--config", default="./fake_config/test_washington_post_multicls.yaml")
+parser.add_argument("--imagebind_ckpt_path", default="../pretrained_ckpt/imagebind_ckpt/imagebind_huge.pth")
+parser.add_argument("--vicuna_ckpt_path", default="../pretrained_ckpt/vicuna_ckpt/7b_v0/")
+parser.add_argument("--delta_ckpt_path", default="../pretrained_ckpt/pandagpt_ckpt/7b/pytorch_model.pt")
 command_args = parser.parse_args()
 
 time1 = datetime.datetime.now()
 
 args = {
     "model": "openllama_peft_multicls_aux_nogt",
-    "imagebind_ckpt_path": "../pretrained_ckpt/imagebind_ckpt/imagebind_huge.pth",
-    "vicuna_ckpt_path": "../pretrained_ckpt/vicuna_ckpt/7b_v0/",
-    "delta_ckpt_path": "../pretrained_ckpt/pandagpt_ckpt/7b/pytorch_model.pt",
+    "imagebind_ckpt_path": command_args.imagebind_ckpt_path,
+    "vicuna_ckpt_path": command_args.vicuna_ckpt_path,
+    "delta_ckpt_path": command_args.delta_ckpt_path,
     "stage": 1,
     "max_tgt_len": 128,
     "lora_r": 32,

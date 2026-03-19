@@ -169,6 +169,26 @@ def find_first_file_in_directory(directory_path):
 
 
 PROMPT_START = '### Human: <Img>'
+
+
+def _resolve_ckpt_path(path_value, base_dirs):
+    """
+    Resolve relative checkpoint paths against known bases while preserving
+    absolute paths and HF-style identifiers.
+    """
+    if not isinstance(path_value, str):
+        return path_value
+    expanded = os.path.expanduser(path_value)
+    if os.path.isabs(expanded):
+        return expanded
+    if expanded.startswith("."):
+        for base in base_dirs:
+            candidate = os.path.abspath(os.path.join(base, expanded))
+            if os.path.exists(candidate):
+                return candidate
+    return expanded
+
+
 class OpenLLAMAPEFTModel(nn.Module):
 
     '''LoRA for LLaMa model'''
@@ -176,14 +196,27 @@ class OpenLLAMAPEFTModel(nn.Module):
     def __init__(self, **args):
         super(OpenLLAMAPEFTModel, self).__init__()
         self.args = args
-        imagebind_ckpt_path = args['imagebind_ckpt_path']
-        vicuna_ckpt_path = args['vicuna_ckpt_path']
+        code_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        repo_dir = os.path.abspath(os.path.join(code_dir, ".."))
+        imagebind_ckpt_path = _resolve_ckpt_path(
+            args['imagebind_ckpt_path'],
+            [os.getcwd(), code_dir, repo_dir],
+        )
+        vicuna_ckpt_path = _resolve_ckpt_path(
+            args['vicuna_ckpt_path'],
+            [os.getcwd(), code_dir, repo_dir],
+        )
         max_tgt_len = args['max_tgt_len']
         stage = args['stage']
 
         print (f'Initializing visual encoder from {imagebind_ckpt_path} ...')
 
         self.visual_encoder, self.visual_hidden_size = imagebind_model.imagebind_huge(args)
+        if not os.path.exists(imagebind_ckpt_path):
+            raise FileNotFoundError(
+                f"ImageBind checkpoint not found: {imagebind_ckpt_path}. "
+                "Please pass a valid --imagebind_ckpt_path."
+            )
         imagebind_ckpt = torch.load(imagebind_ckpt_path, map_location=torch.device('cpu'))
         self.visual_encoder.load_state_dict(imagebind_ckpt, strict=True)
 
