@@ -3,7 +3,7 @@ ROOT=../
 export PYTHONPATH=$ROOT:$PYTHONPATH
 
 deepspeed --include localhost:0,1 --master_port 28402 train_DGM4.py \
-    --model openllama_peft \
+    --model openllama_peft_multicls_aux_nogt \
     --stage 1 \
     --imagebind_ckpt_path ../pretrained_ckpt/imagebind_ckpt/imagebind_huge.pth \
     --vicuna_ckpt_path ../pretrained_ckpt/vicuna_ckpt/7b_v0/ \

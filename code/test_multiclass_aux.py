@@ -8,7 +8,7 @@ from transformers import GenerationConfig
 
 from datasets import create_dataset, create_loader
 from datasets.deepfake_dataset_multicls import LABEL_TO_INDEX, MULTICLASS_CHOICES
-from model.openllama import OpenLLAMAPEFTModel
+from model.openllama_multicls_aux_nogt import OpenLLAMAPEFTModelMultiClsAuxNoGT
 
 
 parser = argparse.ArgumentParser("FKA_Owl_MultiCls_Aux", add_help=True)
@@ -19,7 +19,7 @@ command_args = parser.parse_args()
 time1 = datetime.datetime.now()
 
 args = {
-    "model": "openllama_peft",
+    "model": "openllama_peft_multicls_aux_nogt",
     "imagebind_ckpt_path": "../pretrained_ckpt/imagebind_ckpt/imagebind_huge.pth",
     "vicuna_ckpt_path": "../pretrained_ckpt/vicuna_ckpt/7b_v0/",
     "delta_ckpt_path": "../pretrained_ckpt/pandagpt_ckpt/7b/pytorch_model.pt",
@@ -31,7 +31,7 @@ args = {
     "device": "cuda",
 }
 
-model = OpenLLAMAPEFTModel(**args)
+model = OpenLLAMAPEFTModelMultiClsAuxNoGT(**args)
 delta_ckpt = torch.load(args["delta_ckpt_path"], map_location=torch.device("cpu"))
 model.load_state_dict(delta_ckpt, strict=False)
 delta_ckpt = torch.load(command_args.FKA_Owl_ckpt_path, map_location=torch.device("cpu"))
