@@ -1,5 +1,7 @@
 from .agent import DeepSpeedAgent
 from .openllama import OpenLLAMAPEFTModel
+from .agent_multicls_only import DeepSpeedAgentMultiClsOnly
+from .openllama_multicls_only import OpenLLAMAPEFTModelMultiClsOnly
 # from .openllama_CLIP import OpenLLAMAPEFTModel_CLIP
 from .ImageBind import models
 

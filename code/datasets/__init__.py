@@ -3,10 +3,12 @@ from .samplers import DistributedBatchSampler
 import torchvision.transforms as transforms
 from datasets.randaugment import RandomAugment
 from datasets.deepfake_dataset import DGM4_Dataset
+from datasets.deepfake_dataset_multicls import DGM4_DatasetMultiCls
 from PIL import Image
 
 
 def create_dataset(config, is_train = True):
+    task_mode = config.get('task_mode', 'binary')
     normalize = transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
 
     train_transform = transforms.Compose([
@@ -20,12 +22,13 @@ def create_dataset(config, is_train = True):
         transforms.ToTensor(),
         normalize,
     ])
+    dataset_cls = DGM4_DatasetMultiCls if task_mode == 'multiclass' else DGM4_Dataset
     if is_train:
-        DGM4dataset = DGM4_Dataset(config=config, ann_file=config['train_file'], transform=train_transform,
-                                   max_words=config['max_words'], is_train=True)
+        DGM4dataset = dataset_cls(config=config, ann_file=config['train_file'], transform=train_transform,
+                                  max_words=config['max_words'], is_train=True)
     else:
-        DGM4dataset = DGM4_Dataset(config=config, ann_file=config['val_file'], transform=test_transform,
-                                   max_words=config['max_words'], is_train=False)
+        DGM4dataset = dataset_cls(config=config, ann_file=config['val_file'], transform=test_transform,
+                                  max_words=config['max_words'], is_train=False)
     return DGM4dataset
 
 def create_loader(datasets, samplers, batch_size, num_workers, is_trains, collate_fns):

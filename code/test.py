@@ -3,15 +3,20 @@ from model.openllama import OpenLLAMAPEFTModel
 from model.ImageBind.data import  load_and_transform_news_text,load_choice_data
 import torch
 from torchvision import transforms
+from sklearn.metrics import roc_auc_score
 from PIL import Image
 import numpy as np
 import argparse
 import yaml
 from datasets import create_dataset, create_loader
-from datasets.deepfake_dataset import MULTICLASS_CHOICES, LABEL_TO_INDEX
 import json
+import torch.nn.functional as F
 from transformers import GenerationConfig
-from sklearn.metrics import accuracy_score, f1_score
+
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_curve
+from scipy.optimize import brentq
+from scipy.interpolate import interp1d
 import datetime
 
 parser = argparse.ArgumentParser("FKA_Owl", add_help=True)
@@ -98,10 +103,18 @@ val_loader = create_loader([val_dataset],
                                collate_fns=[val_dataset.collate])[0]
 
 
-y_true, y_pred = [], []
+cls_nums_all = 0
+cls_acc_all = 0
+y_true, y_pred =[], []
 device = torch.device(args['device'])
 
-choice_ids = [model.llama_tokenizer(choice).input_ids[1] for choice in MULTICLASS_CHOICES]
+choices = ["B", "A"]
+choice_ids = [model.llama_tokenizer(choice).input_ids[1] for choice in choices]
+
+bs = 1
+batch_choice_logits = torch.zeros([bs,2])
+batch_label_class = []
+cls_label = torch.ones(bs, dtype=torch.long).to(device)
 
 for i, batch in enumerate(val_loader):
 
@@ -115,28 +128,48 @@ for i, batch in enumerate(val_loader):
     resp, scores = predict(prompts, images, text, 512, 0.1, 1.0, [], [])
 
     choise_scores = scores[0]
-    if choise_scores.dim() == 1:
-        choise_scores = choise_scores.unsqueeze(0)
+    choice_logits = choise_scores[:,choice_ids]
 
-    choice_logits = choise_scores[:, choice_ids]
-    pred_class_idx = int(torch.argmax(choice_logits, dim=1).item())
+    k = i%bs
+    batch_choice_logits[k,:] = choice_logits
+    batch_label_class.append(label)
 
-    if label not in LABEL_TO_INDEX:
-        raise ValueError(f"Unknown label found in dataset: {label}")
+    if (i+1)%bs == 0:
+        choice_probs= F.softmax(batch_choice_logits,dim=1)
+        logits_real_fake = torch.zeros([bs,2])
+        logits_real_fake[:,0] = choice_probs[:,0]
 
-    y_pred.append(pred_class_idx)
-    y_true.append(LABEL_TO_INDEX[label])
+        fake_prob = torch.sum(choice_probs[:,1:],dim = 1)
+        logits_real_fake[:,1] = fake_prob
+
+        cls_label = torch.ones(bs, dtype=torch.long)
+        real_label_pos = np.where(np.array(batch_label_class) == 'orig')[0].tolist()
+        cls_label[real_label_pos] = 0
+
+        y_pred.extend(fake_prob.detach().cpu().flatten().tolist())
+        y_true.extend(cls_label.cpu().flatten().tolist())
+
+        pred_acc = logits_real_fake.argmax(1).to(device)
+        cls_nums_all += cls_label.shape[0]
+        cls_label = cls_label.to(device)
+        cls_acc_all += torch.sum(pred_acc == cls_label).item()
+
+        del batch_label_class
+        batch_label_class = []
 
 
 y_true, y_pred = np.array(y_true), np.array(y_pred)
-macro_f1 = f1_score(y_true, y_pred, average='macro')
-weighted_f1 = f1_score(y_true, y_pred, average='weighted')
-acc = accuracy_score(y_true, y_pred)
+AUC_cls = roc_auc_score(y_true, y_pred)
+ACC_cls = cls_acc_all / cls_nums_all
+fpr, tpr, thresholds = roc_curve(y_true, y_pred, pos_label=1)
+EER_cls = brentq(lambda x: 1. - x - interp1d(fpr, tpr)(x), 0., 1.)
 
-print("Macro-F1:", macro_f1)
-print("Weighted-F1:", weighted_f1)
-print("ACC:", acc)
-print("Num samples:", len(y_true))
+
+print("AUC:",AUC_cls)
+print("ACC:",ACC_cls)
+print("EER:",EER_cls)
+print(cls_acc_all)
+print(cls_nums_all)
 time2 = datetime.datetime.now()
 print("time consumed: ", time2 - time1)
 

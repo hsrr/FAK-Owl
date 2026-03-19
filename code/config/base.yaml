@@ -9,6 +9,11 @@ models:
         agent_name: DeepSpeedAgent
         stage1_train_dataset: MVTecDataset
         test_dataset: SelfInstructTestDataset
+    openllama_peft_multicls_only:
+        model_name: OpenLLAMAPEFTModelMultiClsOnly
+        agent_name: DeepSpeedAgentMultiClsOnly
+        stage1_train_dataset: MVTecDataset
+        test_dataset: SelfInstructTestDataset
 
 # ========= Global configuration ========== #
 logging_step: 5
