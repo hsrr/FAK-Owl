@@ -8,7 +8,7 @@ from transformers import StoppingCriteria, StoppingCriteriaList
 from utils.loss import FocalLoss, BinaryDiceLoss
 import kornia as K
 from peft import LoraConfig, TaskType, get_peft_model
-from transformers import LlamaTokenizer, LlamaForCausalLM, LlamaConfig, GenerationConfig
+from transformers import LlamaTokenizer, LlamaTokenizerFast, LlamaForCausalLM, LlamaConfig, GenerationConfig
 import torch
 from torch.nn.utils import rnn
 from model import box_ops
@@ -220,7 +220,17 @@ class OpenLLAMAPEFTModel(nn.Module):
         self.llama_model = get_peft_model(self.llama_model, peft_config)
         self.llama_model.print_trainable_parameters()
 
-        self.llama_tokenizer = LlamaTokenizer.from_pretrained(vicuna_ckpt_path, use_fast=False)
+        # Prefer fast tokenizer to avoid hard dependency on sentencepiece when tokenizer.json exists.
+        try:
+            self.llama_tokenizer = LlamaTokenizerFast.from_pretrained(vicuna_ckpt_path)
+        except Exception:
+            try:
+                self.llama_tokenizer = LlamaTokenizer.from_pretrained(vicuna_ckpt_path, use_fast=False)
+            except Exception as e:
+                raise RuntimeError(
+                    "Failed to load Vicuna tokenizer. If your checkpoint only provides tokenizer.model, "
+                    "please install sentencepiece first: `pip install sentencepiece`."
+                ) from e
         self.llama_tokenizer.pad_token = self.llama_tokenizer.eos_token
         self.llama_tokenizer.padding_side = "right"
         print ('Language decoder initialized.')
