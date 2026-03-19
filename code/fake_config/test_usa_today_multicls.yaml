@@ -1,5 +1,5 @@
-train_file: ["/data1/yaxiong/dataset/DGM4/metadata_split/washington_post/train.json"]
-val_file: ["/data1/yaxiong/dataset/DGM4/metadata_split/washington_post/test.json"]
+train_file: ["/data1/yaxiong/dataset/DGM4/metadata_split/usa_today/train.json"]
+val_file: ["/data1/yaxiong/dataset/DGM4/metadata_split/usa_today/test.json"]
 data_root: "/data1/yaxiong/dataset"
 
 task_mode: "multiclass"
