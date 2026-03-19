@@ -36,6 +36,10 @@ class DeepSpeedAgent:
         bf16_cfg = ds_params.get('bf16', {})
         if isinstance(bf16_cfg, dict) and 'enable' in bf16_cfg and 'enabled' not in bf16_cfg:
             bf16_cfg['enabled'] = bf16_cfg.pop('enable')
+        # DeepSpeed disallows fp16 and bf16 enabled simultaneously.
+        if isinstance(fp16_cfg, dict) and isinstance(bf16_cfg, dict):
+            if fp16_cfg.get('enabled', False) and bf16_cfg.get('enabled', False):
+                bf16_cfg['enabled'] = False
         ds_params['scheduler']['params']['total_num_steps'] = self.args['total_steps']
         ds_params['scheduler']['params']['warmup_num_steps'] = max(10, int(self.args['total_steps'] * self.args['warmup_rate']))
         self.ds_engine, self.optimizer, _ , _ = deepspeed.initialize(
