@@ -2,7 +2,7 @@ from header import *
 
 from .openllama import (
     OpenLLAMAPEFTModel,
-    encode_text_reference,
+    encode_text,
     encode_text_with_prompt_ensemble,
     process_batch_instance,
 )
@@ -23,15 +23,16 @@ class OpenLLAMAPEFTModelMultiClsAuxNoGT(OpenLLAMAPEFTModel):
         img_patch_feaure = torch.mean(img_patch_feaure_layers, dim=0)
         img_all_feature = torch.cat([img_embeds_before_proj, img_patch_feaure], dim=1)
 
-        # Use caption text only; do not use fake_text_pos supervision signals.
+        # Keep the original text feature path.
         text = inputs["captions"]
+        fake_text_pos = inputs["fake_text_pos_list"]
         bs = img_embeds.shape[0]
 
         feats_text_tensor = encode_text_with_prompt_ensemble(
             self.visual_encoder, ["object" for _ in range(bs)], self.device
         )
-        news_text_embeds, news_text_patch_embeds, _ = encode_text_reference(
-            self.visual_encoder, text, self.device
+        news_text_embeds, news_text_patch_embeds, _, _ = encode_text(
+            self.visual_encoder, text, fake_text_pos, self.device
         )
         text_all_feature = torch.cat([news_text_embeds, news_text_patch_embeds], dim=1)
 
