@@ -49,7 +49,8 @@ class DeepSpeedAgent:
 
         self.ds_engine.backward(loss)
         self.ds_engine.step()
-        pbar.set_description(f'[!] loss: {round(loss.item(), 4)}; token_acc: {round(mle_acc*100, 2)}')
+        if current_step % 100 == 0:
+            pbar.set_description(f'[!] step: {current_step}; loss: {round(loss.item(), 4)}; token_acc: {round(mle_acc*100, 2)}')
         pbar.update(1)
         if self.args['local_rank'] == 0 and self.args['log_path'] and current_step % self.args['logging_step'] == 0:
             elapsed = pbar.format_dict['elapsed']
@@ -70,7 +71,6 @@ class DeepSpeedAgent:
         checkpoint = OrderedDict()
         for k, v in self.ds_engine.module.named_parameters():
             if v.requires_grad:
-                print(k)
                 checkpoint[k] = v.data.cpu()
         torch.save(checkpoint, f'{path}/pytorch_model.pt')
         # save tokenizer
