@@ -18,9 +18,6 @@
     "enabled": true,
     "min_loss_scale": 1
   },
-  "bf16": {
-    "enable": true
-  },
   "optimizer": {
     "type": "Adam",
     "params": {
