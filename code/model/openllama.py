@@ -496,8 +496,6 @@ class OpenLLAMAPEFTModel(nn.Module):
 
         # bbox verification (forward pass only, loss disabled)
         output_coord, atts_local_feat_aggr = self.Bbox_Verification(forgery_patch_embeds)
-        loss_bbox = torch.tensor(0.0, device=self.device)
-        loss_giou = torch.tensor(0.0, device=self.device)
 
         # segmentation verification
         forgery_map_prompts, forgery_maps = self.Segmentation_Verification(forgery_patch_embeds,feats_text_tensor,atts_cls_feat = forgery_embed, atts_bbox_feat = atts_local_feat_aggr)
@@ -531,7 +529,7 @@ class OpenLLAMAPEFTModel(nn.Module):
         valid_tokens = gen_acc & valid_mask    # [B*S]
         gen_acc = valid_tokens.sum().item() / valid_mask.sum().item()
 
-        return loss + loss_pixel+ 0.1*(loss_giou + loss_bbox), gen_acc
+        return loss + loss_pixel, gen_acc
 
 
 
