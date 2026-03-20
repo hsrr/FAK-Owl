@@ -25,18 +25,25 @@ prompt_templates = ['a photo of a {}.', 'a photo of the {}.']
 objs = ['face', 'object']
 
 prompt_sentences = {}
+_prompt_sentences_initialized = False
 
-for obj in objs:
-    prompt_sentence_obj = []
-    for i in range(len(prompt_state)):
-        prompted_state = [state.format(obj) for state in prompt_state[i]]
-        prompted_sentence = []
-        for s in prompted_state:
-            for template in prompt_templates:
-                prompted_sentence.append(template.format(s))
-        prompted_sentence = data.load_and_transform_text(prompted_sentence, torch.cuda.current_device())
-        prompt_sentence_obj.append(prompted_sentence)
-    prompt_sentences[obj] = prompt_sentence_obj
+
+def _init_prompt_sentences():
+    global prompt_sentences, _prompt_sentences_initialized
+    if _prompt_sentences_initialized:
+        return
+    for obj in objs:
+        prompt_sentence_obj = []
+        for i in range(len(prompt_state)):
+            prompted_state = [state.format(obj) for state in prompt_state[i]]
+            prompted_sentence = []
+            for s in prompted_state:
+                for template in prompt_templates:
+                    prompted_sentence.append(template.format(s))
+            prompted_sentence = data.load_and_transform_text(prompted_sentence, torch.cuda.current_device())
+            prompt_sentence_obj.append(prompted_sentence)
+        prompt_sentences[obj] = prompt_sentence_obj
+    _prompt_sentences_initialized = True
 
 def encode_text(model, text, fake_text_pos,device):
 
@@ -65,6 +72,7 @@ def encode_text_reference(model, text, device):
 
 def encode_text_with_prompt_ensemble(model, obj, device):
 
+    _init_prompt_sentences()
     global prompt_sentences
     normal_sentences = []
     abnormal_sentences = []
