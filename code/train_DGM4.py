@@ -13,11 +13,11 @@ def parser_args():
     parser.add_argument('--log_path', default='./ckpt/train_DGM4/log_rest/', type=str)
     parser.add_argument('--seed', default=777, type=int)
     # model configurations
-    parser.add_argument('--imagebind_ckpt_path', default='../pretrained_ckpt/imagebind_ckpt/imagebind_huge.pth',
+    parser.add_argument('--imagebind_ckpt_path', default='/data1/yaxiong/UniMMFakeDet/FAK-Owl/pretrained_ckpt/imagebind_ckpt/imagebind_huge.pth',
                         type=str)  # the path that stores the imagebind checkpoint
-    parser.add_argument('--vicuna_ckpt_path', default='../pretrained_ckpt/vicuna_ckpt/7b_v0/',
+    parser.add_argument('--vicuna_ckpt_path', default='/data1/yaxiong/ckpt/vicuna_ckpt/7b_v0/',
                         type=str)  # the path that stores the vicuna checkpoint
-    parser.add_argument('--delta_ckpt_path', default='../pretrained_ckpt/pandagpt_ckpt/7b/pytorch_model.pt',
+    parser.add_argument('--delta_ckpt_path', default='/data1/yaxiong/UniMMFakeDet/FAK-Owl/pretrained_ckpt/pandagpt_ckpt/7b/pytorch_model.pt',
                         type=str)  # the delta parameters trained in stage 1
     parser.add_argument('--max_tgt_len', default=1024, type=int)  # the maximum sequence length
     parser.add_argument('--stage', type=int)  
