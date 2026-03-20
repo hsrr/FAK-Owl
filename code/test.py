@@ -13,7 +13,7 @@ import json
 import torch.nn.functional as F
 from transformers import GenerationConfig
 
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, accuracy_score, classification_report, confusion_matrix
 from sklearn.metrics import roc_curve
 from scipy.optimize import brentq
 from scipy.interpolate import interp1d
@@ -105,16 +105,21 @@ val_loader = create_loader([val_dataset],
 
 cls_nums_all = 0
 cls_acc_all = 0
-y_true, y_pred =[], []
+y_true, y_pred = [], []
 device = torch.device(args['device'])
 
-choices = ["B", "A"]
+CLASS_NAMES = ['orig', 'face_swap', 'face_attribute', 'text_swap', 'text_attribute',
+               'face_swap&text_swap', 'face_swap&text_attribute',
+               'face_attribute&text_swap', 'face_attribute&text_attribute']
+cls_to_idx = {name: idx for idx, name in enumerate(CLASS_NAMES)}
+num_classes = len(CLASS_NAMES)
+
+choices = ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
 choice_ids = [model.llama_tokenizer(choice).input_ids[1] for choice in choices]
 
 bs = 1
-batch_choice_logits = torch.zeros([bs,2])
+batch_choice_logits = torch.zeros([bs, num_classes])
 batch_label_class = []
-cls_label = torch.ones(bs, dtype=torch.long).to(device)
 
 for i, batch in enumerate(val_loader):
 
@@ -128,48 +133,40 @@ for i, batch in enumerate(val_loader):
     resp, scores = predict(prompts, images, text, 512, 0.1, 1.0, [], [])
 
     choise_scores = scores[0]
-    choice_logits = choise_scores[:,choice_ids]
+    choice_logits = choise_scores[:, choice_ids]
 
-    k = i%bs
-    batch_choice_logits[k,:] = choice_logits
+    k = i % bs
+    batch_choice_logits[k, :] = choice_logits
     batch_label_class.append(label)
 
-    if (i+1)%bs == 0:
-        choice_probs= F.softmax(batch_choice_logits,dim=1)
-        logits_real_fake = torch.zeros([bs,2])
-        logits_real_fake[:,0] = choice_probs[:,0]
+    if (i + 1) % bs == 0:
+        choice_probs = F.softmax(batch_choice_logits, dim=1)
 
-        fake_prob = torch.sum(choice_probs[:,1:],dim = 1)
-        logits_real_fake[:,1] = fake_prob
+        cls_label = torch.tensor([cls_to_idx[lbl] for lbl in batch_label_class], dtype=torch.long)
 
-        cls_label = torch.ones(bs, dtype=torch.long)
-        real_label_pos = np.where(np.array(batch_label_class) == 'orig')[0].tolist()
-        cls_label[real_label_pos] = 0
+        pred_cls = choice_probs.argmax(1)
 
-        y_pred.extend(fake_prob.detach().cpu().flatten().tolist())
+        y_pred.extend(pred_cls.detach().cpu().flatten().tolist())
         y_true.extend(cls_label.cpu().flatten().tolist())
 
-        pred_acc = logits_real_fake.argmax(1).to(device)
         cls_nums_all += cls_label.shape[0]
-        cls_label = cls_label.to(device)
-        cls_acc_all += torch.sum(pred_acc == cls_label).item()
+        cls_acc_all += torch.sum(pred_cls.cpu() == cls_label).item()
 
         del batch_label_class
         batch_label_class = []
 
 
 y_true, y_pred = np.array(y_true), np.array(y_pred)
-AUC_cls = roc_auc_score(y_true, y_pred)
 ACC_cls = cls_acc_all / cls_nums_all
-fpr, tpr, thresholds = roc_curve(y_true, y_pred, pos_label=1)
-EER_cls = brentq(lambda x: 1. - x - interp1d(fpr, tpr)(x), 0., 1.)
 
+print("\n===== Multi-class Classification Results =====")
+print(f"Overall Accuracy: {ACC_cls:.4f}")
+print(f"Correct: {cls_acc_all} / Total: {cls_nums_all}")
+print("\nPer-class report:")
+print(classification_report(y_true, y_pred, target_names=CLASS_NAMES, digits=4, zero_division=0))
+print("Confusion Matrix:")
+print(confusion_matrix(y_true, y_pred))
 
-print("AUC:",AUC_cls)
-print("ACC:",ACC_cls)
-print("EER:",EER_cls)
-print(cls_acc_all)
-print(cls_nums_all)
 time2 = datetime.datetime.now()
 print("time consumed: ", time2 - time1)
 

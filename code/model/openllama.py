@@ -494,10 +494,10 @@ class OpenLLAMAPEFTModel(nn.Module):
         # cross-modal reason
         forgery_embed, forgery_patch_embeds = self.Cross_Modal_Reason(bs, img_all_feature, text_all_feature)
 
-        # #bbox verfication
-        fake_image_box = torch.cat(inputs['fake_image_boxs'], dim=0).reshape(bs, -1)
+        # bbox verification (forward pass only, loss disabled)
         output_coord, atts_local_feat_aggr = self.Bbox_Verification(forgery_patch_embeds)
-        loss_bbox, loss_giou = self.get_bbox_loss(output_coord, fake_image_box.to(output_coord.device))
+        loss_bbox = torch.tensor(0.0, device=self.device)
+        loss_giou = torch.tensor(0.0, device=self.device)
 
         # segmentation verification
         forgery_map_prompts, forgery_maps = self.Segmentation_Verification(forgery_patch_embeds,feats_text_tensor,atts_cls_feat = forgery_embed, atts_bbox_feat = atts_local_feat_aggr)
