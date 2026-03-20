@@ -490,7 +490,6 @@ class OpenLLAMAPEFTModel(nn.Module):
         itm_labels = torch.ones(bs, dtype=torch.long).to(device)
         itm_labels[real_label_pos] = 0  
 
-        loss_pixel = 0
         feats_text_tensor = encode_text_with_prompt_ensemble(self.visual_encoder, ['object' for _ in label],
                                                                 self.device)
 
@@ -502,20 +501,11 @@ class OpenLLAMAPEFTModel(nn.Module):
         # cross-modal reason
         forgery_embed, forgery_patch_embeds = self.Cross_Modal_Reason(bs, img_all_feature, text_all_feature)
 
-        # bbox verification (forward pass only, loss disabled)
+        # bbox verification (forward pass only)
         output_coord, atts_local_feat_aggr = self.Bbox_Verification(forgery_patch_embeds)
 
-        # segmentation verification
+        # segmentation verification (forward pass only)
         forgery_map_prompts, forgery_maps = self.Segmentation_Verification(forgery_patch_embeds,feats_text_tensor,atts_cls_feat = forgery_embed, atts_bbox_feat = atts_local_feat_aggr)
-
-
-        gt = inputs['masks']
-        gt = torch.stack(gt, dim=0).to(self.device)
-        gt = gt.squeeze()
-        gt[gt > 0.3], gt[gt <= 0.3] = 1, 0
-        f_loss = self.loss_focal(forgery_maps, gt)
-        d_loss = self.loss_dice(forgery_maps[:, 1, :, :], gt)
-        loss_pixel = loss_pixel + f_loss + d_loss
 
         output_texts = inputs['texts']
         input_ids, target_ids, attention_mask = process_batch_instance(self.llama_tokenizer, output_texts, self.max_tgt_len)
@@ -537,7 +527,7 @@ class OpenLLAMAPEFTModel(nn.Module):
         valid_tokens = gen_acc & valid_mask    # [B*S]
         gen_acc = valid_tokens.sum().item() / valid_mask.sum().item()
 
-        return loss + loss_pixel, gen_acc
+        return loss, gen_acc
 
 
 
