@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from PIL import Image
 
 
 ## aug functions
@@ -331,6 +332,8 @@ class RandomAugment(object):
                 continue
             args = arg_dict[name](level)
             img = func_dict[name](img, *args)
+        if self.isPIL:
+            img = Image.fromarray(img)
         return img
 
 
