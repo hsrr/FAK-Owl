@@ -10,5 +10,5 @@ deepspeed --include localhost:0,1 --master_port 28400 train_DGM4.py \
     --max_tgt_len 1024\
     --save_path  ./ckpt/train_DGM4/\
     --log_path ./ckpt/train_DGM4/log_rest/\
-    --config ./fake_config/train_bbc.yaml
+    --config ./fake_config/train_guardian.yaml
 

@@ -1,5 +1,5 @@
-train_file: ["../data/DGM4/medadata_split/washington_post/train.json"]
-val_file: ["../data/DGM4/medadata_split/washington_post/test.json"]
+train_file: ["/data1/yaxiong/dataset/DGM4/metadata_split/washington_post/train.json"]
+val_file: ["/data1/yaxiong/dataset/DGM4/metadata_split/washington_post/test.json"]
 
 bert_config: 'configs/config_bert.json'
 image_res: 224

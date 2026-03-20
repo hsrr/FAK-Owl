@@ -38,7 +38,7 @@ describles_answ['face_attribute&text_attribute'] = "B, D."
 class DGM4_Dataset(Dataset):
     def __init__(self, config, ann_file, transform, max_words=30, is_train=True):
 
-        self.root_dir = '../data'
+        self.root_dir = '/data1/yaxiong/dataset'
         self.ann = []
 
         for f in ann_file:
