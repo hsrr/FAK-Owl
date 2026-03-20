@@ -23,17 +23,17 @@ import numpy as np
 describles_answ = {}
 
 describe_temple = "The following are multiple choice questions about fake news detection. \n\nThe caption of news is: "
-describe_ques_latter = ". The identity and emotion of the face, and the semantic and sentiment of the text should not be manipulated. Question: What type of manipulation exists in this news?\nA. No manipulation\nB. Face swap\nC. Face attribute manipulation\nD. Text swap\nE. Text attribute manipulation\nF. Face swap and text swap\nG. Face swap and text attribute manipulation\nH. Face attribute manipulation and text swap\nI. Face attribute manipulation and text attribute manipulation\nThe answer is:"
+describe_ques_latter = ". The identity and emotion of the face, and the semantic and sentiment of the text should not be manipulated. Question: Which of the following manipulations exist in this news? (Select all that apply)\nA. Face swap\nB. Face attribute manipulation\nC. Text swap\nD. Text attribute manipulation\nE. No manipulation\nThe answer is:"
 
-describles_answ['orig'] = "A. No manipulation."
-describles_answ['face_swap'] = "B. Face swap."
-describles_answ['face_attribute'] = "C. Face attribute manipulation."
-describles_answ['text_swap'] = "D. Text swap."
-describles_answ['text_attribute'] = "E. Text attribute manipulation."
-describles_answ['face_swap&text_swap'] = "F. Face swap and text swap."
-describles_answ['face_swap&text_attribute'] = "G. Face swap and text attribute manipulation."
-describles_answ['face_attribute&text_swap'] = "H. Face attribute manipulation and text swap."
-describles_answ['face_attribute&text_attribute'] = "I. Face attribute manipulation and text attribute manipulation."
+describles_answ['orig'] = "E."
+describles_answ['face_swap'] = "A."
+describles_answ['face_attribute'] = "B."
+describles_answ['text_swap'] = "C."
+describles_answ['text_attribute'] = "D."
+describles_answ['face_swap&text_swap'] = "A, C."
+describles_answ['face_swap&text_attribute'] = "A, D."
+describles_answ['face_attribute&text_swap'] = "B, C."
+describles_answ['face_attribute&text_attribute'] = "B, D."
 
 class DGM4_Dataset(Dataset):
     def __init__(self, config, ann_file, transform, max_words=30, is_train=True):

@@ -13,10 +13,11 @@ import json
 import torch.nn.functional as F
 from transformers import GenerationConfig
 
-from sklearn.metrics import roc_auc_score, accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import roc_auc_score, classification_report
 from sklearn.metrics import roc_curve
 from scipy.optimize import brentq
 from scipy.interpolate import interp1d
+from utils.multilabel_metrics import get_multi_label
 import datetime
 
 parser = argparse.ArgumentParser("FKA_Owl", add_help=True)
@@ -104,22 +105,15 @@ val_loader = create_loader([val_dataset],
 
 
 cls_nums_all = 0
-cls_acc_all = 0
-y_true, y_pred = [], []
 device = torch.device(args['device'])
 
-CLASS_NAMES = ['orig', 'face_swap', 'face_attribute', 'text_swap', 'text_attribute',
-               'face_swap&text_swap', 'face_swap&text_attribute',
-               'face_attribute&text_swap', 'face_attribute&text_attribute']
-cls_to_idx = {name: idx for idx, name in enumerate(CLASS_NAMES)}
-num_classes = len(CLASS_NAMES)
+LABEL_NAMES = ['face_swap', 'face_attribute', 'text_swap', 'text_attribute']
 
-choices = ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
+choices = ["A", "B", "C", "D", "E"]
 choice_ids = [model.llama_tokenizer(choice).input_ids[1] for choice in choices]
 
-bs = 1
-batch_choice_logits = torch.zeros([bs, num_classes])
-batch_label_class = []
+all_multilabel_true = []
+all_multilabel_pred = []
 
 for i, batch in enumerate(val_loader):
 
@@ -132,40 +126,50 @@ for i, batch in enumerate(val_loader):
 
     resp, scores = predict(prompts, images, text, 512, 0.1, 1.0, [], [])
 
+    gt_multilabel, _ = get_multi_label([label], device)
+    gt_multilabel = gt_multilabel.cpu().numpy()[0]
+
     choise_scores = scores[0]
     choice_logits = choise_scores[:, choice_ids]
+    choice_probs = F.softmax(choice_logits, dim=1)[0]
 
-    k = i % bs
-    batch_choice_logits[k, :] = choice_logits
-    batch_label_class.append(label)
+    prob_A, prob_B, prob_C, prob_D, prob_E = choice_probs.tolist()
+    pred_multilabel = np.array([
+        1 if prob_A > prob_E else 0,
+        1 if prob_B > prob_E else 0,
+        1 if prob_C > prob_E else 0,
+        1 if prob_D > prob_E else 0,
+    ])
 
-    if (i + 1) % bs == 0:
-        choice_probs = F.softmax(batch_choice_logits, dim=1)
+    all_multilabel_true.append(gt_multilabel)
+    all_multilabel_pred.append(pred_multilabel)
+    cls_nums_all += 1
 
-        cls_label = torch.tensor([cls_to_idx[lbl] for lbl in batch_label_class], dtype=torch.long)
+all_multilabel_true = np.array(all_multilabel_true)
+all_multilabel_pred = np.array(all_multilabel_pred)
 
-        pred_cls = choice_probs.argmax(1)
+exact_match = np.all(all_multilabel_true == all_multilabel_pred, axis=1).sum()
+exact_match_acc = exact_match / cls_nums_all
 
-        y_pred.extend(pred_cls.detach().cpu().flatten().tolist())
-        y_true.extend(cls_label.cpu().flatten().tolist())
+print("\n===== Multi-label Classification Results =====")
+print(f"Exact Match Accuracy: {exact_match_acc:.4f} ({exact_match}/{cls_nums_all})")
+print("\nPer-label results:")
+for j, name in enumerate(LABEL_NAMES):
+    y_t = all_multilabel_true[:, j]
+    y_p = all_multilabel_pred[:, j]
+    acc_j = np.mean(y_t == y_p)
+    print(f"  {name}: Accuracy={acc_j:.4f}", end="")
+    if y_t.sum() > 0 and len(np.unique(y_t)) > 1:
+        auc_j = roc_auc_score(y_t, y_p)
+        print(f", AUC={auc_j:.4f}", end="")
+    print()
 
-        cls_nums_all += cls_label.shape[0]
-        cls_acc_all += torch.sum(pred_cls.cpu() == cls_label).item()
-
-        del batch_label_class
-        batch_label_class = []
-
-
-y_true, y_pred = np.array(y_true), np.array(y_pred)
-ACC_cls = cls_acc_all / cls_nums_all
-
-print("\n===== Multi-class Classification Results =====")
-print(f"Overall Accuracy: {ACC_cls:.4f}")
-print(f"Correct: {cls_acc_all} / Total: {cls_nums_all}")
-print("\nPer-class report:")
-print(classification_report(y_true, y_pred, target_names=CLASS_NAMES, digits=4, zero_division=0))
-print("Confusion Matrix:")
-print(confusion_matrix(y_true, y_pred))
+print("\nPer-label classification report:")
+for j, name in enumerate(LABEL_NAMES):
+    y_t = all_multilabel_true[:, j]
+    y_p = all_multilabel_pred[:, j]
+    print(f"\n  [{name}]")
+    print(classification_report(y_t, y_p, target_names=['no', 'yes'], digits=4, zero_division=0))
 
 time2 = datetime.datetime.now()
 print("time consumed: ", time2 - time1)
