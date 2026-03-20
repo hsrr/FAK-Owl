@@ -1,4 +1,5 @@
 #!/bin/bash
+cd "$(dirname "$0")/.."
 ROOT=../
 export PYTHONPATH=$ROOT:$PYTHONPATH
 deepspeed --include localhost:0 --master_port 28400 train_DGM4.py \
