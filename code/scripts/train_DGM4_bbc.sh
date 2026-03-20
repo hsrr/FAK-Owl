@@ -1,7 +1,7 @@
 #!/bin/bash
 ROOT=../
 export PYTHONPATH=$ROOT:$PYTHONPATH
-deepspeed --include localhost:0,1 --master_port 28400 train_DGM4.py \
+deepspeed --include localhost:0 --master_port 28400 train_DGM4.py \
     --model openllama_peft \
     --stage 1 \
     --imagebind_ckpt_path /data1/yaxiong/UniMMFakeDet/FAK-Owl/pretrained_ckpt/imagebind_ckpt/imagebind_huge.pth \
