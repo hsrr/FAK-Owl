@@ -71,7 +71,7 @@ class DeepSpeedAgent:
         for k, v in self.ds_engine.module.named_parameters():
             if v.requires_grad:
                 print(k)
-                checkpoint[k] = v
+                checkpoint[k] = v.data.cpu()
         torch.save(checkpoint, f'{path}/pytorch_model.pt')
         # save tokenizer
         self.model.llama_tokenizer.save_pretrained(path)
