@@ -17,7 +17,7 @@ from sklearn.metrics import roc_auc_score, classification_report
 from sklearn.metrics import roc_curve
 from scipy.optimize import brentq
 from scipy.interpolate import interp1d
-from utils.multilabel_metrics import get_multi_label
+from utils.multilabel_metrics import get_multi_label, AveragePrecisionMeter
 import datetime
 
 parser = argparse.ArgumentParser("FKA_Owl", add_help=True)
@@ -114,6 +114,9 @@ choice_ids = [model.llama_tokenizer(choice).input_ids[1] for choice in choices]
 
 all_multilabel_true = []
 all_multilabel_pred = []
+all_multilabel_scores = []
+
+ap_meter = AveragePrecisionMeter()
 
 for i, batch in enumerate(val_loader):
 
@@ -140,19 +143,49 @@ for i, batch in enumerate(val_loader):
         1 if prob_C > prob_E else 0,
         1 if prob_D > prob_E else 0,
     ])
+    pred_scores = np.array([prob_A, prob_B, prob_C, prob_D])
 
     all_multilabel_true.append(gt_multilabel)
     all_multilabel_pred.append(pred_multilabel)
+    all_multilabel_scores.append(pred_scores)
+
+    ap_meter.add(
+        torch.tensor(pred_scores).unsqueeze(0),
+        torch.tensor(gt_multilabel).unsqueeze(0)
+    )
+
     cls_nums_all += 1
 
 all_multilabel_true = np.array(all_multilabel_true)
 all_multilabel_pred = np.array(all_multilabel_pred)
+all_multilabel_scores = np.array(all_multilabel_scores)
 
 exact_match = np.all(all_multilabel_true == all_multilabel_pred, axis=1).sum()
 exact_match_acc = exact_match / cls_nums_all
 
 print("\n===== Multi-label Classification Results =====")
 print(f"Exact Match Accuracy: {exact_match_acc:.4f} ({exact_match}/{cls_nums_all})")
+
+# --- Per-class AP and MAP ---
+ap_per_class = ap_meter.value()
+mAP = ap_per_class.mean().item()
+print(f"\n--- Mean Average Precision (MAP) ---")
+for j, name in enumerate(LABEL_NAMES):
+    print(f"  AP_{name}: {ap_per_class[j]:.4f}")
+print(f"  MAP: {mAP:.4f}")
+
+# --- OP/OR/OF1 (micro-average), CP/CR/CF1 (macro-average) ---
+OP, OR, OF1, CP, CR, CF1 = ap_meter.evaluation(all_multilabel_scores, all_multilabel_true)
+print(f"\n--- Overall (micro-average) ---")
+print(f"  OP (Precision): {OP:.4f}")
+print(f"  OR (Recall):    {OR:.4f}")
+print(f"  OF1 (F1):       {OF1:.4f}")
+print(f"\n--- Class-average (macro-average) ---")
+print(f"  CP (Precision): {CP:.4f}")
+print(f"  CR (Recall):    {CR:.4f}")
+print(f"  CF1 (F1):       {CF1:.4f}")
+
+# --- Per-label accuracy / AUC ---
 print("\nPer-label results:")
 for j, name in enumerate(LABEL_NAMES):
     y_t = all_multilabel_true[:, j]
@@ -164,6 +197,7 @@ for j, name in enumerate(LABEL_NAMES):
         print(f", AUC={auc_j:.4f}", end="")
     print()
 
+# --- Per-label F1 (sklearn classification_report) ---
 print("\nPer-label classification report:")
 for j, name in enumerate(LABEL_NAMES):
     y_t = all_multilabel_true[:, j]
