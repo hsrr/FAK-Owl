@@ -52,14 +52,6 @@ def create_loader(datasets, samplers, batch_size, num_workers, is_trains, collat
     return loaders
 
 def load_DGM4_dataset(dataset, args):
-    '''
-    tokenizer = get_tokenizer(args['model_path'])
-    dataset_name = args['models'][args['model']]['stage1_train_dataset'] # SupervisedDataset, str
-    data_path = args["data_path"]
-    data = globals()[dataset_name](data_path, tokenizer, args['max_length']) #SupervisedDataset
-    '''
-    #data = SupervisedDataset(args['data_path'], args['image_root_path'])
-
     sampler = torch.utils.data.RandomSampler(dataset)
     world_size = torch.distributed.get_world_size()
     rank = torch.distributed.get_rank()
@@ -79,3 +71,25 @@ def load_DGM4_dataset(dataset, args):
         pin_memory=False
     )
     return iter_, sampler
+
+
+def load_DGM4_val_dataset(dataset, args):
+    sampler = torch.utils.data.SequentialSampler(dataset)
+    world_size = torch.distributed.get_world_size()
+    rank = torch.distributed.get_rank()
+    batch_size = args['world_size'] * args['dschf'].config['train_micro_batch_size_per_gpu']
+    batch_sampler = DistributedBatchSampler(
+        sampler,
+        batch_size,
+        False,
+        rank,
+        world_size
+    )
+    iter_ = DataLoader(
+        dataset,
+        batch_sampler=batch_sampler,
+        num_workers=4,
+        collate_fn=dataset.collate,
+        pin_memory=False
+    )
+    return iter_

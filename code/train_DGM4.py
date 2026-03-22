@@ -2,26 +2,26 @@ from header import *
 from datasets import *
 from model import *
 from config import *
+import yaml
 
 
 def parser_args():
     parser = argparse.ArgumentParser(description='train parameters')
-    parser.add_argument('--config', default='./fake_config/train.yaml')
+    parser.add_argument('--config', default='./fake_config/train_guardian.yaml')
     parser.add_argument('--model', default='openllama_peft', type=str)
     parser.add_argument('--local_rank', default=0, type=int)
     parser.add_argument('--save_path', default='./ckpt/train_DGM4/', type=str)
     parser.add_argument('--log_path', default='./ckpt/train_DGM4/log_rest/', type=str)
     parser.add_argument('--seed', default=777, type=int)
-    # model configurations
     parser.add_argument('--imagebind_ckpt_path', default='/data1/yaxiong/UniMMFakeDet/FAK-Owl/pretrained_ckpt/imagebind_ckpt/imagebind_huge.pth',
-                        type=str)  # the path that stores the imagebind checkpoint
+                        type=str)
     parser.add_argument('--vicuna_ckpt_path', default='/data1/yaxiong/ckpt/vicuna_ckpt/7b_v0/',
-                        type=str)  # the path that stores the vicuna checkpoint
+                        type=str)
     parser.add_argument('--delta_ckpt_path', default='/data1/yaxiong/UniMMFakeDet/FAK-Owl/pretrained_ckpt/pandagpt_ckpt/7b/pytorch_model.pt',
-                        type=str)  # the delta parameters trained in stage 1
-    parser.add_argument('--max_tgt_len', default=1024, type=int)  # the maximum sequence length
-    parser.add_argument('--stage', type=int)  
-    parser.add_argument('--early_stop', default=10, type=int)  
+                        type=str)
+    parser.add_argument('--max_tgt_len', default=1024, type=int)
+    parser.add_argument('--stage', type=int)
+    parser.add_argument('--patience', default=3, type=int)
 
     return parser.parse_args()
 
@@ -55,10 +55,7 @@ def config_env(args):
 
 
 def build_directory(path):
-    if os.path.exists(path):
-        pass
-    else:  # recursively construct directory
-        os.makedirs(path, exist_ok=True)
+    os.makedirs(path, exist_ok=True)
 
 
 def main(**args):
@@ -69,6 +66,8 @@ def main(**args):
 
     build_directory(args['save_path'])
     build_directory(args['log_path'])
+    best_model_path = os.path.join(args['save_path'], 'best')
+    build_directory(best_model_path)
 
     seed = args['seed'] + torch.distributed.get_rank()
     torch.manual_seed(seed)
@@ -84,11 +83,13 @@ def main(**args):
         )
 
     config = yaml.load(open(args['config'], 'r'), Loader=yaml.Loader)
-    train_dataset = create_dataset(config)
+    train_dataset = create_dataset(config, is_train=True)
+    val_dataset = create_dataset(config, is_train=False)
 
     train_iter, sampler = load_DGM4_dataset(train_dataset, args)
+    val_iter = load_DGM4_val_dataset(val_dataset, args)
 
-    args['epochs'] = 50
+    args['epochs'] = 12
 
     length = args['epochs'] * len(train_dataset) // args['world_size'] // dschf.config['train_micro_batch_size_per_gpu']
     total_steps = args['epochs'] * len(train_dataset) // dschf.config['train_batch_size']
@@ -96,13 +97,18 @@ def main(**args):
     agent = load_model(args)
     torch.distributed.barrier()
 
-    # begin to train
-    pbar = tqdm(total=length)  # maximum total number
+    # early stopping state
+    patience = args['patience']
+    best_val_loss = float('inf')
+    epochs_no_improve = 0
+
+    pbar = tqdm(total=length)
     current_step = 0
-    early_stop = args['early_stop']
-    for epoch_i in tqdm(range(args['epochs'])):
-        if epoch_i == early_stop:
-            break
+
+    for epoch_i in range(args['epochs']):
+        if args['local_rank'] == 0:
+            print(f'\n=== Epoch {epoch_i + 1}/{args["epochs"]} ===')
+
         for batch in train_iter:
             agent.train_model(
                 batch,
@@ -110,10 +116,37 @@ def main(**args):
                 pbar=pbar
             )
             current_step += 1
-        agent.save_model(args['save_path'], 0)
+
+        # validation
+        val_loss, val_acc = agent.validate(val_iter)
+
+        if args['local_rank'] == 0:
+            print(f'Epoch {epoch_i + 1}: val_loss={val_loss:.4f}, val_acc={val_acc * 100:.2f}%')
+            logging.info(f'Epoch {epoch_i + 1}: val_loss={val_loss:.4f}, val_acc={val_acc * 100:.2f}%')
+
+        agent.save_model(args['save_path'], epoch_i)
+
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            epochs_no_improve = 0
+            agent.save_model(best_model_path, epoch_i)
+            if args['local_rank'] == 0:
+                print(f'  -> Best model saved (val_loss={val_loss:.4f})')
+        else:
+            epochs_no_improve += 1
+            if args['local_rank'] == 0:
+                print(f'  -> No improvement ({epochs_no_improve}/{patience})')
+
+        if epochs_no_improve >= patience:
+            if args['local_rank'] == 0:
+                print(f'Early stopping at epoch {epoch_i + 1}')
+            break
+
+        torch.distributed.barrier()
 
     torch.distributed.barrier()
-    agent.save_model(args['save_path'], 0)
+    if args['local_rank'] == 0:
+        print(f'Training finished. Best val_loss={best_val_loss:.4f}')
 
 
 if __name__ == "__main__":
@@ -121,5 +154,3 @@ if __name__ == "__main__":
     args = vars(args)
     args['layers'] = [7, 15, 23, 31]
     main(**args)
-
-

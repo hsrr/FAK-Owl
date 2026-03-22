@@ -62,20 +62,37 @@ class DeepSpeedAgent:
         mle_acc *= 100
         return mle_acc
 
+    @torch.no_grad()
+    def validate(self, val_iter):
+        self.ds_engine.module.eval()
+        total_loss = 0.0
+        total_acc = 0.0
+        total_count = 0
+        for batch in val_iter:
+            loss, acc = self.ds_engine.module(batch)
+            total_loss += loss.item()
+            total_acc += acc
+            total_count += 1
+        avg_loss = total_loss / max(1, total_count)
+        avg_acc = total_acc / max(1, total_count)
+
+        loss_tensor = torch.tensor([avg_loss, avg_acc, total_count],
+                                   device=torch.cuda.current_device())
+        torch.distributed.all_reduce(loss_tensor, op=torch.distributed.ReduceOp.SUM)
+        world_size = torch.distributed.get_world_size()
+        avg_loss = loss_tensor[0].item() / world_size
+        avg_acc = loss_tensor[1].item() / world_size
+
+        self.ds_engine.module.train()
+        return avg_loss, avg_acc
+
     def save_model(self, path, current_step):
-        # only save trainable model parameters
-        param_grad_dic = {
-            k: v.requires_grad for (k, v) in self.ds_engine.module.named_parameters()
-        }
-        state_dict = self.ds_engine.module.state_dict()
         checkpoint = OrderedDict()
         for k, v in self.ds_engine.module.named_parameters():
             if v.requires_grad:
                 checkpoint[k] = v.data.cpu()
         torch.save(checkpoint, f'{path}/pytorch_model.pt')
-        # save tokenizer
         self.model.llama_tokenizer.save_pretrained(path)
-        # save configuration
         self.model.llama_model.config.save_pretrained(path)
         print(f'[!] save model into {path}')
 

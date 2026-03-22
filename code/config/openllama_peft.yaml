@@ -17,5 +17,5 @@ lora_dropout: 0.1
 train:
     seed: 42
     warmup_rate: 0.1
-    epochs: 50
+    epochs: 12
     max_length: 1024

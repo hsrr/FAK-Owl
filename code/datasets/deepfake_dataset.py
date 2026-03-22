@@ -23,17 +23,26 @@ import numpy as np
 describles_answ = {}
 
 describe_temple = "The following are multiple choice questions about fake news detection. \n\nThe caption of news is: "
-describe_ques_latter = ". The identity and emotion of the face, and the semantic and sentiment of the text should not be manipulated. Question: Which of the following manipulations exist in this news? (Select all that apply)\nA. Face swap\nB. Face attribute manipulation\nC. Text swap\nD. Text attribute manipulation\nE. No manipulation\nThe answer is:"
+describe_ques_latter = (
+    ". The identity and emotion of the face, and the semantic and sentiment of the text "
+    "should not be manipulated. For each manipulation type, determine whether it exists "
+    "(1 for yes, 0 for no):\n"
+    "1. Face swap\n"
+    "2. Face attribute manipulation\n"
+    "3. Text swap\n"
+    "4. Text attribute manipulation\n"
+    "Answer as [face_swap, face_attribute, text_swap, text_attribute]:"
+)
 
-describles_answ['orig'] = "E."
-describles_answ['face_swap'] = "A."
-describles_answ['face_attribute'] = "B."
-describles_answ['text_swap'] = "C."
-describles_answ['text_attribute'] = "D."
-describles_answ['face_swap&text_swap'] = "A, C."
-describles_answ['face_swap&text_attribute'] = "A, D."
-describles_answ['face_attribute&text_swap'] = "B, C."
-describles_answ['face_attribute&text_attribute'] = "B, D."
+describles_answ['orig'] = "[0, 0, 0, 0]"
+describles_answ['face_swap'] = "[1, 0, 0, 0]"
+describles_answ['face_attribute'] = "[0, 1, 0, 0]"
+describles_answ['text_swap'] = "[0, 0, 1, 0]"
+describles_answ['text_attribute'] = "[0, 0, 0, 1]"
+describles_answ['face_swap&text_swap'] = "[1, 0, 1, 0]"
+describles_answ['face_swap&text_attribute'] = "[1, 0, 0, 1]"
+describles_answ['face_attribute&text_swap'] = "[0, 1, 1, 0]"
+describles_answ['face_attribute&text_attribute'] = "[0, 1, 0, 1]"
 
 class DGM4_Dataset(Dataset):
     def __init__(self, config, ann_file, transform, max_words=30, is_train=True):

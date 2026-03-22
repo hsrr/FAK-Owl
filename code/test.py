@@ -1,6 +1,7 @@
 import os
+import re
 from model.openllama import OpenLLAMAPEFTModel
-from model.ImageBind.data import  load_and_transform_news_text,load_choice_data
+from model.ImageBind.data import load_and_transform_news_text, load_choice_data
 import torch
 from torchvision import transforms
 from sklearn.metrics import roc_auc_score
@@ -21,13 +22,12 @@ from utils.multilabel_metrics import get_multi_label
 import datetime
 
 parser = argparse.ArgumentParser("FKA_Owl", add_help=True)
-# paths
 parser.add_argument("--FKA_Owl_ckpt_path", default='./ckpt/train_DGM4/pytorch_model.pt')
 parser.add_argument("--config", default='./fake_config/test_guardian.yaml')
 
 command_args = parser.parse_args()
 time1 = datetime.datetime.now()
-# init the model
+
 args = {
     'model': 'openllama_peft',
     'imagebind_ckpt_path': '/data1/yaxiong/UniMMFakeDet/FAK-Owl/pretrained_ckpt/imagebind_ckpt/imagebind_huge.pth',
@@ -49,6 +49,18 @@ model.load_state_dict(delta_ckpt, strict=False)
 model = model.eval().half().cuda()
 
 print(f'[!] init the 7b model over ...')
+
+
+def parse_prediction_list(text):
+    """Parse [x, y, z, w] from generated text."""
+    match = re.search(r'\[(\d)\s*,\s*(\d)\s*,\s*(\d)\s*,\s*(\d)\]', text)
+    if match:
+        return np.array([int(match.group(i)) for i in range(1, 5)])
+    numbers = re.findall(r'[01]', text)
+    if len(numbers) >= 4:
+        return np.array([int(n) for n in numbers[:4]])
+    return np.array([0, 0, 0, 0])
+
 
 def predict(
     input,
@@ -83,7 +95,7 @@ def predict(
         'audio_paths': [],
         'video_paths': [],
         'thermal_paths': [],
-        'news_text':news_texts if news_texts else [],
+        'news_text': news_texts if news_texts else [],
         'top_p': None,
         'temperature': temperature,
         'max_tgt_len': max_length,
@@ -93,27 +105,25 @@ def predict(
 
     return response, scores
 
+
 config = yaml.load(open(command_args.config, 'r'), Loader=yaml.Loader)
-val_dataset = create_dataset(config,is_train=False)
+val_dataset = create_dataset(config, is_train=False)
 samplers = [None]
 val_loader = create_loader([val_dataset],
-                               samplers,
-                               batch_size=[config['batch_size_val']],
-                               num_workers=[4],
-                               is_trains=[False],
-                               collate_fns=[val_dataset.collate])[0]
-
+                           samplers,
+                           batch_size=[config['batch_size_val']],
+                           num_workers=[4],
+                           is_trains=[False],
+                           collate_fns=[val_dataset.collate])[0]
 
 cls_nums_all = 0
 device = torch.device(args['device'])
 
 LABEL_NAMES = ['face_swap', 'face_attribute', 'text_swap', 'text_attribute']
 
-choices = ["A", "B", "C", "D", "E"]
-choice_ids = [model.llama_tokenizer(choice).input_ids[1] for choice in choices]
-
 all_multilabel_true = []
 all_multilabel_pred = []
+all_harm_scores = []
 
 for i, batch in enumerate(val_loader):
 
@@ -129,17 +139,11 @@ for i, batch in enumerate(val_loader):
     gt_multilabel, _ = get_multi_label([label], device)
     gt_multilabel = gt_multilabel.cpu().numpy()[0]
 
-    choise_scores = scores[0]
-    choice_logits = choise_scores[:, choice_ids]
-    choice_probs = F.softmax(choice_logits, dim=1)[0]
+    pred_multilabel = parse_prediction_list(resp)
 
-    prob_A, prob_B, prob_C, prob_D, prob_E = choice_probs.tolist()
-    pred_multilabel = np.array([
-        1 if prob_A > prob_E else 0,
-        1 if prob_B > prob_E else 0,
-        1 if prob_C > prob_E else 0,
-        1 if prob_D > prob_E else 0,
-    ])
+    # HARM score: partial credit per element
+    harm_score = np.mean(pred_multilabel == gt_multilabel)
+    all_harm_scores.append(harm_score)
 
     all_multilabel_true.append(gt_multilabel)
     all_multilabel_pred.append(pred_multilabel)
@@ -150,8 +154,10 @@ all_multilabel_pred = np.array(all_multilabel_pred)
 
 exact_match = np.all(all_multilabel_true == all_multilabel_pred, axis=1).sum()
 exact_match_acc = exact_match / cls_nums_all
+avg_harm_score = np.mean(all_harm_scores)
 
 print("\n===== Multi-label Classification Results =====")
+print(f"HARM Score (partial credit): {avg_harm_score:.4f}")
 print(f"Exact Match Accuracy: {exact_match_acc:.4f} ({exact_match}/{cls_nums_all})")
 print("\nPer-label results:")
 for j, name in enumerate(LABEL_NAMES):
@@ -173,5 +179,3 @@ for j, name in enumerate(LABEL_NAMES):
 
 time2 = datetime.datetime.now()
 print("time consumed: ", time2 - time1)
-
-
