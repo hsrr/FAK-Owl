@@ -3,16 +3,13 @@ import torch.nn.functional as F
 from .ImageBind import *
 from .ImageBind import data
 from .modeling_llama import LlamaForCausalLM
-from .FKA_Owl_models import LinearLayer, Cross_Modal_Reason, Segmentation_Verification, Bbox_Verification
+from .FKA_Owl_models import LinearLayer, Cross_Modal_Reason
 from transformers import StoppingCriteria, StoppingCriteriaList
-from utils.loss import FocalLoss, BinaryDiceLoss
 import kornia as K
 from peft import LoraConfig, TaskType, get_peft_model
 from transformers import LlamaTokenizer, LlamaForCausalLM, LlamaConfig, GenerationConfig
 import torch
 from torch.nn.utils import rnn
-from model import box_ops
-from utils.multilabel_metrics import get_multi_label
 
 CLASS_NAMES = ['face', 'object']
 
@@ -199,12 +196,6 @@ class OpenLLAMAPEFTModel(nn.Module):
 
         self.Cross_Modal_Reason = Cross_Modal_Reason(1024)
         self.Multi_level = LinearLayer(1280, 1024, 4)
-        
-        self.Segmentation_Verification = Segmentation_Verification(1, 4096)
-        self.Bbox_Verification = Bbox_Verification(1024)
-
-        self.loss_focal = FocalLoss()
-        self.loss_dice = BinaryDiceLoss()
 
         # free vision encoder
         for name, param in self.visual_encoder.named_parameters():
@@ -239,35 +230,6 @@ class OpenLLAMAPEFTModel(nn.Module):
 
         self.max_tgt_len = max_tgt_len
         self.device = torch.cuda.current_device()
-
-    def get_bbox_loss(self, output_coord, target_bbox, is_image=None):
-        """
-        Bounding Box Loss: L1 & GIoU
-
-        Args:
-            image_embeds: encoding full images
-        """
-        loss_bbox = F.l1_loss(output_coord, target_bbox, reduction='none')  # bsz, 4
-
-        boxes1 = box_ops.box_cxcywh_to_xyxy(output_coord)
-        boxes2 = box_ops.box_cxcywh_to_xyxy(target_bbox)
-        if (boxes1[:, 2:] < boxes1[:, :2]).any() or (boxes2[:, 2:] < boxes2[:, :2]).any():
-            # early check of degenerated boxes
-            print("### (boxes1[:, 2:] < boxes1[:, :2]).any() or (boxes2[:, 2:] < boxes2[:, :2]).any()")
-            loss_giou = torch.zeros(output_coord.size(0), device=output_coord.device)
-        else:
-            # loss_giou = 1 - torch.diag(box_ops.generalized_box_iou(boxes1, boxes2))  # bsz
-            loss_giou = 1 - box_ops.generalized_box_iou(boxes1, boxes2)  # bsz
-
-        if is_image is None:
-            num_boxes = target_bbox.size(0)
-        else:
-            num_boxes = torch.sum(1 - is_image)
-            loss_bbox = loss_bbox * (1 - is_image.view(-1, 1))
-            loss_giou = loss_giou * (1 - is_image)
-
-        return loss_bbox.sum() / num_boxes, loss_giou.sum() / num_boxes
-
 
     def rot90_img(self,x,k):
         # k is 0,1,2,3
@@ -472,44 +434,26 @@ class OpenLLAMAPEFTModel(nn.Module):
 
 
     def forward(self, inputs):
-            
-        # Obtain multi_level visual feauture
+
         image_paths = inputs['images']
         img_embeds, _, patch_tokens, img_embeds_before_proj = self.encode_image_from_tensor(image_paths)
-        img_patch_feaure_layers = torch.stack(patch_tokens,dim=0)
-        img_patch_feaure = torch.mean(img_patch_feaure_layers,dim = 0)
-        img_all_feature = torch.cat([img_embeds_before_proj,img_patch_feaure],dim=1)
+        img_patch_feaure_layers = torch.stack(patch_tokens, dim=0)
+        img_patch_feaure = torch.mean(img_patch_feaure_layers, dim=0)
+        img_all_feature = torch.cat([img_embeds_before_proj, img_patch_feaure], dim=1)
 
         text = inputs['captions']
-        fake_text_pos = inputs['fake_text_pos_list']
-        device = self.device
         bs = img_embeds.shape[0]
 
-        label = inputs['class_names']
-        multicls_label, real_label_pos = get_multi_label(label, device)
-        itm_labels = torch.ones(bs, dtype=torch.long).to(device)
-        itm_labels[real_label_pos] = 0  
-
-        feats_text_tensor = encode_text_with_prompt_ensemble(self.visual_encoder, ['object' for _ in label],
-                                                                self.device)
-
-
-        news_text_embeds, news_text_patch_embeds, padding_masks, fake_token_pos_batch = \
-            encode_text(self.visual_encoder, text, fake_text_pos, self.device)
+        news_text_embeds, news_text_patch_embeds, padding_masks = \
+            encode_text_reference(self.visual_encoder, text, self.device)
         text_all_feature = torch.cat([news_text_embeds, news_text_patch_embeds], dim=1)
 
-        # cross-modal reason
-        forgery_embed, forgery_patch_embeds = self.Cross_Modal_Reason(bs, img_all_feature, text_all_feature)
-
-        # bbox verification (forward pass only)
-        output_coord, atts_local_feat_aggr = self.Bbox_Verification(forgery_patch_embeds)
-
-        # segmentation verification (forward pass only)
-        forgery_map_prompts, forgery_maps = self.Segmentation_Verification(forgery_patch_embeds,feats_text_tensor,atts_cls_feat = forgery_embed, atts_bbox_feat = atts_local_feat_aggr)
+        forgery_embed, _ = self.Cross_Modal_Reason(bs, img_all_feature, text_all_feature)
 
         output_texts = inputs['texts']
         input_ids, target_ids, attention_mask = process_batch_instance(self.llama_tokenizer, output_texts, self.max_tgt_len)
-        inputs_embeds, targets, attention_mask = self.prompt_wrap(img_embeds, input_ids, target_ids, attention_mask, forgery_map_prompts)
+        inputs_embeds, targets, attention_mask = self.prompt_wrap(
+            img_embeds, input_ids, target_ids, attention_mask, forgery_embed)
         outputs = self.llama_model(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
@@ -518,13 +462,11 @@ class OpenLLAMAPEFTModel(nn.Module):
         )
         loss = outputs.loss
 
-
-        chosen_tokens = torch.max(outputs.logits, dim=-1)[1][:, 1:-1]    # [B, S-1]
+        chosen_tokens = torch.max(outputs.logits, dim=-1)[1][:, 1:-1]
         labels = targets[:, 2:]
-        gen_acc = (chosen_tokens.reshape(-1) == labels.reshape(-1)).to(torch.long)    # [B*S]
+        gen_acc = (chosen_tokens.reshape(-1) == labels.reshape(-1)).to(torch.long)
         valid_mask = (labels != -100).reshape(-1)
-
-        valid_tokens = gen_acc & valid_mask    # [B*S]
+        valid_tokens = gen_acc & valid_mask
         gen_acc = valid_tokens.sum().item() / valid_mask.sum().item()
 
         return loss, gen_acc
@@ -582,28 +524,17 @@ class OpenLLAMAPEFTModel(nn.Module):
         p_middle_embeds = self.llama_model.model.model.embed_tokens(p_middle_tokens.input_ids).expand(batch_size, -1, -1) # bsz x s1 x embed_dim
 
 
-        # forgery-specific knowledge augmentation
-        feats_text_tensor = encode_text_with_prompt_ensemble(self.visual_encoder, ['object' for _ in range(batch_size)],
-                                                             self.device)
-        # consistency knowledge
-        forgery_embed, forgery_patch_embeds = self.Cross_Modal_Reason(batch_size, news_img_embeds, news_text_embeds)
-        
-        # artifact knowledge
-        output_coord, atts_local_feat_aggr = self.Bbox_Verification(forgery_patch_embeds)
-        forgery_map_prompts, forgery_maps = self.Segmentation_Verification(forgery_patch_embeds, feats_text_tensor,
-                                                                        atts_cls_feat=forgery_embed,
-                                                                        atts_bbox_feat=atts_local_feat_aggr)
-        
+        forgery_embed, _ = self.Cross_Modal_Reason(batch_size, news_img_embeds, news_text_embeds)
 
         text = prompt + '\n### Assistant:'
         p_after_tokens = self.llama_tokenizer(text, add_special_tokens=False, return_tensors='pt').to(self.device)
-        p_after_embeds = self.llama_model.model.model.embed_tokens(p_after_tokens.input_ids).expand(batch_size, -1, -1) # bsz x s2 x embed_dim
+        p_after_embeds = self.llama_model.model.model.embed_tokens(p_after_tokens.input_ids).expand(batch_size, -1, -1)
         bos = torch.ones([batch_size, 1],
                          dtype=p_before_tokens.input_ids.dtype,
-                         device=p_before_tokens.input_ids.device) * self.llama_tokenizer.bos_token_id # bsz x 1
-        bos_embeds = self.llama_model.model.model.embed_tokens(bos) # bsz x 1 x embed_dim
-        inputs_embeds = torch.cat([bos_embeds, p_before_embeds, feature_embeds, p_middle_embeds, forgery_map_prompts, p_after_embeds], dim=1) # bsz x (1+s1+1+s2) x embed_dim
-    
+                         device=p_before_tokens.input_ids.device) * self.llama_tokenizer.bos_token_id
+        bos_embeds = self.llama_model.model.model.embed_tokens(bos)
+        inputs_embeds = torch.cat([bos_embeds, p_before_embeds, feature_embeds, p_middle_embeds, forgery_embed, p_after_embeds], dim=1)
+
         return inputs_embeds
 
     def generate(self, inputs,web_demo=False):

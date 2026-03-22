@@ -19,12 +19,6 @@ class DeepSpeedAgent:
         for name, param in self.model.Multi_level.named_parameters():
             param.requires_grad = True
 
-        for name, param in self.model.Segmentation_Verification.named_parameters():
-            param.requires_grad = True
-
-        for name, param in self.model.Bbox_Verification.named_parameters():
-            param.requires_grad = True
-
         # load config parameters of deepspeed
         ds_params = json.load(open(self.args['ds_config_path']))
         ds_params['scheduler']['params']['total_num_steps'] = self.args['total_steps']
